@@ -1,0 +1,13 @@
+{
+  "physical_fpga": true,
+  "frames": 99,
+  "dropped": 1,
+  "seconds": 10.12552320001123,
+  "fps": 9.777272546261136,
+  "distinct_positions": 36,
+  "partial_sprites": 0,
+  "pause_ms_mean": 43.39652525252525,
+  "pause_ms_max": 50.377,
+  "cpu_pause_fraction": 0.4242996549546432,
+  "user_pause_preserved": true
+}

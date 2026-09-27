@@ -1,0 +1,22 @@
+{
+  "physical_fpga": true,
+  "frames": 589,
+  "ui_fps": 8.946844114946806,
+  "distinct_images": 28,
+  "isolated_key_callbacks": true,
+  "error": null,
+  "state": {
+    "version": 2,
+    "running": true,
+    "halted": false,
+    "pc": 7143,
+    "a": 128,
+    "x": 14,
+    "y": 0,
+    "sp": 240,
+    "p": 164
+  },
+  "level": 1,
+  "keyboard_mode": 1,
+  "player_position": "021d1ffa"
+}

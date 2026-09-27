@@ -1,0 +1,3 @@
+# Native-flow input placement must be available BEFORE packing.
+set VE_FILE "a2_link.ve"
+set VEX_FILE "a2_link.ve"

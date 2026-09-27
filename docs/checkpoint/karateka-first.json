@@ -1,0 +1,40 @@
+{
+  "status": {
+    "version": 2,
+    "running": true,
+    "halted": false,
+    "pc": 3451,
+    "a": 1,
+    "x": 4,
+    "y": 121,
+    "sp": 250,
+    "p": 36
+  },
+  "requests": [
+    {
+      "command": 200,
+      "detail": "KARATEKA.A"
+    },
+    {
+      "command": 202,
+      "detail": "KARATEKA.A: 3643 bytes -> $A400"
+    },
+    {
+      "command": 204,
+      "detail": ""
+    },
+    {
+      "command": 200,
+      "detail": "KARATEKA.2"
+    },
+    {
+      "command": 202,
+      "detail": "KARATEKA.2: 7845 bytes -> $4000"
+    },
+    {
+      "command": 204,
+      "detail": ""
+    }
+  ],
+  "images": 10
+}

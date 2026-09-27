@@ -1,0 +1,7 @@
+clk PIN_23
+sck PIN_38
+mosi PIN_42
+miso PIN_39
+cs_n PIN_44
+irq PIN_43
+led_n PIN_141

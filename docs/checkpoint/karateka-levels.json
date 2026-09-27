@@ -1,0 +1,91 @@
+{
+  "physical_fpga": true,
+  "levels": [
+    {
+      "level": 2,
+      "state": {
+        "version": 2,
+        "running": true,
+        "halted": false,
+        "pc": 3474,
+        "a": 1,
+        "x": 46,
+        "y": 46,
+        "sp": 251,
+        "p": 36
+      },
+      "markers": "02394b"
+    },
+    {
+      "level": 3,
+      "state": {
+        "version": 2,
+        "running": true,
+        "halted": false,
+        "pc": 3453,
+        "a": 1,
+        "x": 3,
+        "y": 3,
+        "sp": 251,
+        "p": 36
+      },
+      "markers": "03384a"
+    },
+    {
+      "level": 4,
+      "state": {
+        "version": 2,
+        "running": true,
+        "halted": false,
+        "pc": 6558,
+        "a": 186,
+        "x": 14,
+        "y": 152,
+        "sp": 244,
+        "p": 164
+      },
+      "markers": "043f4d"
+    }
+  ],
+  "movement_before": "01fe3000",
+  "movement_after": "05fa2cf6",
+  "requests": [
+    {
+      "command": 200,
+      "detail": "KARATEKA.3"
+    },
+    {
+      "command": 202,
+      "detail": "KARATEKA.3: 7038 bytes -> $4000"
+    },
+    {
+      "command": 204,
+      "detail": ""
+    },
+    {
+      "command": 200,
+      "detail": "KARATEKA.4"
+    },
+    {
+      "command": 202,
+      "detail": "KARATEKA.4: 7200 bytes -> $4000"
+    },
+    {
+      "command": 204,
+      "detail": ""
+    },
+    {
+      "command": 200,
+      "detail": "KARATEKA.5"
+    },
+    {
+      "command": 202,
+      "detail": "KARATEKA.5: 7799 bytes -> $4000"
+    },
+    {
+      "command": 204,
+      "detail": ""
+    }
+  ],
+  "normal_playthrough_verified": false
+}

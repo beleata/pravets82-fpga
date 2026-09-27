@@ -1,0 +1,7 @@
+Usb driver connected on device 0
+JTAG device ID: 0x01000011
+Usb driver disconnected
+Error: Scanned data did not match expected value.
+Error: [usb_close] Encountered errors!.
+
+Total 0 fatals, 2 errors, 0 warnings, 0 infos.

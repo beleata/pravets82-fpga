@@ -1,0 +1,690 @@
+> alta::tcl_whisper "Cmd : [alta::prog_path] [alta::prog_version]([alta::prog_subversion])\n"
+Cmd : F:/fpga/AgRV_pio/AgRV_pio/packages/tool-agrv_logic/bin/af.exe 2025.05.b0(03e36770)
+> alta::tcl_whisper "Args : [string map {\{ \" \} \"} $tcl_cmd_args]\n"
+Args : -X "set MODE NATIVE" -X "set FLOW ALL" -F ./af_run.tcl
+> 
+> set_seed_rand $SEED
+> set ar_timing_derate ${TIMING_DERATE}
+> 
+> date_time
+Sat Sep 26 23:25:18 2026
+> if { [file exists [file join . ${DESIGN}.pre.asf]] } {
+  alta::tcl_highlight "Using pre-ASF file ${DESIGN}.pre.asf.\n"
+  source [file join . ${DESIGN}.pre.asf]
+}
+Using pre-ASF file a2_link.pre.asf.
+> # Native-flow input placement must be available BEFORE packing.
+> set VE_FILE "a2_link.ve"
+> set VEX_FILE "a2_link.ve"
+> 
+> set LOAD_DB    false
+> set LOAD_PLACE false
+> set LOAD_ROUTE false
+> set LOAD_PACK false
+> if { $FLOW == "LOAD" || $FLOW == "CHECK" || $FLOW == "PROBE" } {
+  set LOAD_DB    true
+  set LOAD_PLACE true
+  set LOAD_ROUTE true
+} elseif { $FLOW == "R" || $FLOW == "ROUTE" } {
+  set LOAD_DB    true
+  set LOAD_PLACE true
+} elseif { $FLOW == "PR" || $FLOW == "PLACE_AND_ROUTE" } {
+  set LOAD_DB    false
+  set LOAD_PACK  true
+}
+> 
+> set ORIGINAL_QSF "./a2_link.qsf"
+> set ORIGINAL_PIN "./quartus_logs/a2_link.pin"
+> 
+> #################################################################################
+> 
+> # The default SDC file is ${DESIGN}.sdc 
+> set sdc_file $SDC_FILE
+> if { $sdc_file == "" } {
+  set sdc_file [file join . ${DESIGN}.adc]
+  if { ! [file exists $sdc_file] } { set sdc_file [file join . ${DESIGN}.sdc]; }
+}
+> # No default VE file is not specified
+> set ve_file $VEX_FILE
+> 
+> while (1) {
+
+if { $FLOW == "SKIP" } { break }
+
+if { [info exists CORNER] } { set_mode -corner $CORNER; }
+
+eval "load_architect ${no_route} -type ${DEVICE} 1 1 1000 1000"
+foreach ip_file $IP_FILES { read_ip $ip_file; }
+
+
+if { $FLOW == "GEN" } {
+  if { ! [info exists CONFIG_BITS] } {
+    set CONFIG_BITS [file join ${RESULT_DIR} ${DESIGN}.bin]
+  }
+  if { [llength $CONFIG_BITS] > 1 } {
+    if { ! [info exists BOOT_BINARY] } {
+      set BOOT_BINARY [file join ${RESULT_DIR} ${DESIGN}_boot.bin]
+    }
+    if { ! [info exists CONFIG_ADDRESSES] } {
+      set CONFIG_ADDRESSES ""
+    }
+    generate_binary -master $BOOT_BINARY -inputs $CONFIG_BITS -address $CONFIG_ADDRESSES
+  } else {
+    set CONFIG_ROOT   [file rootname [lindex $CONFIG_BITS 0]]
+    set SLAVE_RBF     "${CONFIG_ROOT}_slave.rbf"
+    set MASTER_BINARY "${CONFIG_ROOT}_master.bin"
+    if { [file exists [lindex $CONFIG_BITS 0]] } {
+      generate_binary -slave  $SLAVE_RBF     -inputs [lindex $CONFIG_BITS 0] -reverse
+      generate_binary -master $MASTER_BINARY -inputs [lindex $CONFIG_BITS 0]
+    }
+    if { ! [info exists BOOT_BINARY] } {
+      set BOOT_BINARY $MASTER_BINARY
+    }
+  }
+  set PRG_FILE [file rootname $BOOT_BINARY].prg
+  set AS_FILE  [file rootname $BOOT_BINARY]_as.prg
+  generate_programming_file $BOOT_BINARY -erase $ERASE \
+                            -program $PROGRAM -verify $VERIFY -offset $OFFSET \
+                            -prg $PRG_FILE -as $AS_FILE
+  break
+}
+
+if { $LOAD_DB } {
+  load_db -top ${TOP_MODULE}
+  if { [file exists $sdc_file] } { read_sdc $sdc_file; }
+
+} elseif { $MODE == "QUARTUS" } {
+  set verilog ${DESIGN}.vo
+  set is_migrated false
+  if { ! [file exists $verilog] } {
+    set verilog [file join . simulation modelsim ${DESIGN}.vo]
+    set is_migrated true
+  }
+  if { ! [file exists $verilog] } {
+    error "Can not find design verilog file $verilog"
+  }
+  alta::tcl_highlight "Using design verilog file $verilog.\n"
+  if { $ve_file != "" && ! [file exists $ve_file] } {
+    alta::tcl_warn "Can not find design VE file $ve_file"
+    set ve_file ""
+  } else {
+    alta::tcl_highlight "Using design VE file $ve_file.\n"
+  }
+  set ret [read_design -top ${TOP_MODULE} -ve $ve_file -qsf $ORIGINAL_QSF $verilog -hierachy 1]
+  if { !$ret } { exit -1; }
+
+  if { $sdc_file != "" && ! [file exists $sdc_file] } {
+    alta::tcl_warn "Can not find design SDC file $sdc_file"
+    set sdc_file ""
+  } else {
+    alta::tcl_highlight "Using design SDC file $sdc_file.\n"
+    read_sdc $sdc_file
+  }
+
+} elseif { $MODE == "SYNPLICITY" || $MODE == "NATIVE" } {
+  set db_gclk_assignment_level 2
+  set verilog ${DESIGN}.vqm
+  set is_migrated false
+  if { ! [file exists $verilog] } {
+    error "Can not find design verilog file $verilog"
+  }
+
+  if { $VEX_FILE != "" } {
+    if { $VEX_FILE == "-" } {
+      set VEX_FILE ""
+    } elseif { ! [file exists $VEX_FILE] } {
+      error "Can not find design VE file $VEX_FILE"
+    }
+  }
+  if { $AGF_FILE != "" } {
+    if { $AGF_FILE == "-" } {
+      set AGF_FILE ""
+    } elseif { ! [file exists $AGF_FILE] } {
+      error "Can not find design AGF file $AGF_FILE"
+    }
+  }
+
+  set alta0_asf [file join $::alta_work alta0.asf]
+  set alta0_apf [file join $::alta_work alta0.apf]
+  file delete -force $alta0_asf
+  file delete -force $alta0_apf
+  if { $AGF_FILE != "" || $VEX_FILE != "" } {
+    alta::convert_pio_settings_cmd $VEX_FILE $AGF_FILE $alta0_asf $alta0_apf
+  }
+
+  alta::tcl_highlight "Using design verilog file $verilog.\n"
+  if { $sdc_file != "" && ! [file exists $sdc_file] } {
+    alta::tcl_warn "Can not find design SDC file $sdc_file"
+    set sdc_file ""
+  } else {
+    alta::tcl_highlight "Using design SDC file $sdc_file.\n"
+  }
+  set load_pack ""
+  if { $LOAD_PACK  } { set load_pack  "-load_pack"; }
+  set ret [eval "read_design_and_pack $load_pack -sdc {$sdc_file} -top ${TOP_MODULE} -type vqm -gclk_level 2 $verilog"]
+
+  set FITTER "full"
+  if { !$ret } { exit -1; }
+
+} else {
+  error "Unsupported mode $MODE"
+}
+
+if { $FLOW == "PACK" } { break }
+
+if { [info exists FITTING] } {
+  if { $FITTING == "Auto" } { set FITTING auto; }
+  set_mode -fitting $FITTING
+}
+if { [info exists FITTER] } {
+  if { $FITTER == "Auto" } {
+    if { $MODE == "QUARTUS" } { set FITTER hybrid; } else { set FITTER full; }
+  }
+  if { $MODE == "SYNPLICITY" || $MODE == "NATIVE" } { set FITTER full; }
+  set_mode -fitter $FITTER
+}
+if { [info exists EFFORT] } { set_mode -effort $EFFORT; }
+if { [info exists SKEW  ] } { set_mode -skew   $SKEW  ; }
+if { [info exists SKOPE ] } { set_mode -skope  $SKOPE ; }
+if { [info exists HOLDX ] } { set_mode -holdx  $HOLDX; }
+if { [info exists TUNING] } { set_mode -tuning $TUNING; }
+if { [info exists TARGET] } { set_mode -target $TARGET; }
+if { [info exists PRESET] } { set_mode -preset $PRESET; }
+if { [info exists ADJUST] } { set pl_criticality_wadjust $ADJUST; }
+
+set alta_aqf [file join $::alta_work alta.aqf]
+if { $LOAD_DB } {
+  # Empty
+} else {
+  file delete -force $alta_aqf
+  if { true } {
+    if { $ORIGINAL_PIN != "" } {
+      if { [file exists $VE_FILE] } {
+        set ORIGINAL_PIN ""
+      } elseif { $ORIGINAL_PIN == "-" } {
+        set ORIGINAL_PIN ""
+      } elseif { ! [file exists $ORIGINAL_PIN] } {
+        if { $is_migrated } {
+          error "Can not find design PIN file $ORIGINAL_PIN, please compile design first"
+        }
+        set ORIGINAL_PIN ""
+      }
+    }
+    if { $ORIGINAL_QSF != "" } {
+      if { $ORIGINAL_QSF == "-" } {
+        set ORIGINAL_QSF ""
+      } elseif { ! [file exists $ORIGINAL_QSF] } {
+        if { $is_migrated } {
+          error "Can not find design exported QSF file $ORIGINAL_QSF, please export assigments first"
+        }
+      }
+    }
+    if { $ORIGINAL_QSF != "" || $ORIGINAL_PIN != "" } {
+      alta::convert_quartus_settings_cmd $ORIGINAL_QSF $ORIGINAL_PIN $alta_aqf
+    }
+  }
+}
+if { [file exists "$alta_aqf"] } {
+  alta::tcl_highlight "Using AQF file $alta_aqf.\n"
+  source "$alta_aqf"
+}
+if { [file exists [file join . ${DESIGN}.asf]] } {
+  alta::tcl_highlight "Using ASF file ${DESIGN}.asf.\n"
+  source [file join . ${DESIGN}.asf]
+}
+
+if { $FLOW == "PROBE" } {
+  set ret [eval "place_pseudo ${user_io} -place_io -place_pll -place_gclk"]
+  if { !$ret } { exit -1 }
+
+  set force ""
+  if { [info exists PROBE_FORCE] && $PROBE_FORCE } { set force "-force" }
+  eval "probe_design -froms {${PROBE_FROMS}} -tos {${PROBE_TOS}} ${force}"
+
+} elseif { $FLOW == "CHECK" } {
+  set ret [eval "place_pseudo ${user_io} -place_io -place_pll -place_gclk"]
+  if { !$ret } { exit -1 }
+
+  if { [file exists [file join . ${DESIGN}.chk]] } {
+    alta::tcl_highlight "Using CHK file ${DESIGN}.chk.\n"
+    source [file join . ${DESIGN}.chk]
+    place_design -dry
+    check_design -rule led_guide
+  } else {
+    error "Can not find design CHECK file ${DESIGN}.chk"
+  }
+
+} else {
+  set ret [eval "place_pseudo ${user_io} -place_io -place_pll -place_gclk -warn_io"]
+  if { !$ret } { exit -1 }
+
+  set org_place ""
+  set load_place ""
+  set load_route ""
+  set quiet ""
+  if {  $ORG_PLACE } { set  org_place "-org_place" ; }
+  if { $LOAD_PLACE } { set load_place "-load_place"; }
+  if { $LOAD_ROUTE } { set load_route "-load_route"; }
+  eval "place_and_route_design $org_place $load_place $load_route \
+                               -retry $RETRY $seed_rand $quiet"
+}
+
+date_time
+if { $FLOW != "CHECK" } {
+if { $FLOW != "PROBE" } {
+report_timing -verbose 2 -setup -file $::alta_work/setup.rpt.gz
+report_timing -verbose 1 -setup -file $::alta_work/setup_summary.rpt
+report_timing -verbose 2 -hold -file $::alta_work/hold.rpt.gz
+report_timing -verbose 1 -hold -file $::alta_work/hold_summary.rpt
+
+set ta_report_auto_constraints 0
+report_timing -fmax -file $::alta_work/fmax.rpt
+report_timing -xfer -file $::alta_work/xfer.rpt
+set ta_report_auto_constraints $ta_report_auto
+
+set ta_dump_uncovered 1
+report_timing -verbose 1 -coverage >! $::alta_work/coverage.rpt.gz
+set ta_dump_uncovered -1
+
+
+if { ! [info exists rt_report_timing_fast] } {
+  set rt_report_timing_fast false
+}
+if { $rt_report_timing_fast } {
+  set_timing_corner fast
+  route_delay -quiet
+  report_timing -verbose 2 -setup -file $::alta_work/setup_fast.rpt.gz
+  report_timing -verbose 1 -setup -file $::alta_work/setup_fast_summary.rpt
+  report_timing -verbose 2 -hold -file $::alta_work/hold_fast.rpt.gz
+  report_timing -verbose 1 -hold -file $::alta_work/hold_fast_summary.rpt
+  set ta_report_auto_constraints 0
+  report_timing -fmax -file $::alta_work/fmax_fast.rpt
+  report_timing -xfer -file $::alta_work/xfer_fast.rpt
+  set ta_report_auto_constraints $ta_report_auto
+}
+
+write_routed_design "${RESULT_DIR}/${RESULT}_routed.v"
+}
+
+bitgen normal -prg "${RESULT_DIR}/${RESULT}.prg" -bin "${RESULT_DIR}/${RESULT}.bin"
+if { false } {
+alta::bin_to_asc "${RESULT_DIR}/${RESULT}.bin" "${RESULT_DIR}/${RESULT}.inc"
+set python_exe [expr {$tcl_platform(platform) eq "unix" ? "python3" : "python.exe"}]
+if { ! [ info exist BATCH_ARG ] } {
+  set BATCH_ARG ""
+}
+set LOGIC_COMPRESS [alta::get_global_assignment_cmd ON_CHIP_BITSTREAM_DECOMPRESSION false]
+if { [string toupper $LOGIC_COMPRESS] != "OFF" } {
+  set BATCH_ARG "$BATCH_ARG --logic-compress"
+}
+set BATCH_MCU 0xbff5105000730062aa234371030002b7
+if { [info exists BATCH_HSE] } {
+  set BATCH_MCU 0xbff5105000730062a62343110062aa234371030002b7
+}
+set GEN_BATCH "{[alta::prog_home]/python_dist/$python_exe} {[alta::prog_home]/pio/gen_batch}\
+  -d [[alta::get_device_info_cmd $DEVICE] device_id]\
+  -i $BATCH_MCU\
+  -o ${RESULT_DIR}/${RESULT}_batch.bin\
+  --logic-config ${RESULT_DIR}/${RESULT}.bin\
+  --logic-address 0x80007000\
+  $BATCH_ARG"
+alta::tcl_highlight "Generating batch file: $GEN_BATCH\n"
+eval "exec $GEN_BATCH"
+} else {
+bitgen sram -prg "${RESULT_DIR}/${RESULT}_sram.prg"
+bitgen download -bin "${RESULT_DIR}/${RESULT}.bin" -svf "${RESULT_DIR}/${RESULT}_download.svf"
+generate_binary -slave "${RESULT_DIR}/${RESULT}_slave.rbf" \
+                -inputs "${RESULT_DIR}/${RESULT}.bin" -reverse
+generate_binary -master "${RESULT_DIR}/${RESULT}_master.bin" \
+                -inputs "${RESULT_DIR}/${RESULT}.bin"
+generate_programming_file "${RESULT_DIR}/${RESULT}_master.bin" -prg "${RESULT_DIR}/${RESULT}_master.prg" \
+  -as "${RESULT_DIR}/${RESULT}_master_as.prg" -hybrid "${RESULT_DIR}/${RESULT}_hybrid.prg"
+}
+}
+break
+}
+Total IO  : 498
+Total Pin : 251/33
+Top array is built.
+Loading architect libraries...
+## CPU time: 0:0:0, REAL time: 0:0:0
+## Memory Usage: 55MB (55MB)
+Loading route table...
+## CPU time: 0:0:15, REAL time: 0:0:16
+## Memory Usage: 862MB (862MB)
+Using design verilog file a2_link.vqm.
+Using design SDC file ./a2_link.sdc.
+Preparing design...
+## CPU time: 0:0:0, REAL time: 0:0:1
+## Memory Usage: 881MB (881MB)
+Loading primitive design...
+## CPU time: 0:0:0, REAL time: 0:0:0
+## Memory Usage: 854MB (881MB)
+> set_location_assignment -to clk PIN_23
+> set_location_assignment -to cs_n PIN_44
+> set_location_assignment -to irq PIN_43
+> set_location_assignment -to led_n PIN_141
+> set_location_assignment -to miso PIN_39
+> set_location_assignment -to mosi PIN_42
+> set_location_assignment -to sck PIN_38
+Info: Created tie LOW cell gnd~I.
+Info: Created GCLK cell for net clk_i_o (550).
+Info: Created inversion slice clk_clk_26_q_inv~I for pin clk_clk_26|d.
+Info: Created inversion slice clk_clk_33_q_inv~I for pin clk_clk_33|d.
+Info: Created inversion slice machine.divider[0]_inv~I for pin machine.divider[0]_reg|d.
+Info: Created inversion slice machine.endpoint.bit_index[0]_inv~I for pin machine.endpoint.bit_index[0]_reg|d.
+Info: Created inversion slice machine.endpoint.cycles[0]_inv~I for pin machine.endpoint.cycles[0]_reg|d.
+Info: Created inversion slice machine.endpoint.phase[0]_inv~I for pin machine.endpoint.phase[0]_reg|d.
+Info: Created inversion slice machine.keyboard[7]_inv~I for pin machine.endpoint.key_valid_reg|d.
+> create_clock -name system -period 20.000 [get_ports {clk}]
+> # SPI is asynchronously sampled, not used as a fabric clock. Timing from
+> # board inputs to the first synchronizer stages is excluded; the FPGA
+> # clock-domain paths remain constrained. External SPI timing is tested on-board.
+> set_false_path -from [get_ports {sck cs_n mosi}]
+> set_false_path -to [get_ports {miso irq led_n}]
+> # cpu_input captures at divider 46; CPU CE is divider 49, three clocks later.
+> # Only this internal data path receives the exception, not SPI/control logic.
+> set_multicycle_path 3 -setup -from [get_cells {machine.cpu_input*}] -to [get_cells {machine.cpu.*}]
+> set_multicycle_path 2 -hold -from [get_cells {machine.cpu_input*}] -to [get_cells {machine.cpu.*}]
+Build Primitives - LUT# : 2058  FF#: 446  SRAM# : 0  BRAM# : 0  MULT# : 0  OTHER#: 60
+Build Primitive - Pair# : 260/36
+Total Primitives# 2636
+  Pre-Packed Carry#:   0  primitive# :   0
+  Pre-Packed Pair #: 296  primitive# : 592
+  Non-Pre-Packed LUT-FF primitive#   : 1984
+
+## CPU time: 0:0:0, REAL time: 0:0:0
+.
+...
+...
+...
+...
+...
+...
+
+Solver ## CPU time: 0:0:29, REAL time: 0:0:30
+...
+
+Touch ## CPU time: 0:0:7, REAL time: 0:0:7
+..........
+
+ECO ## CPU time: 0:0:2, REAL time: 0:0:2
+Total wire cost after placement: -7.146:-0.369:-0.560651(-7.146:-0.369) 7896.72(885.239)+39887(15)+7058(17151.1) 0(0)+0+7058
+
+Crystallize ## CPU time: 0:0:1, REAL time: 0:0:2
+
+Defragment ## CPU time: 0:0:0, REAL time: 0:0:1
+
+Regularize ## CPU time: 0:0:0, REAL time: 0:0:0
+
+
+Total Packed Logic Clusters# : 160/1039, Utilization : 7.5%(48.9%)
+Pseudo pack design...
+Packing Statistics
+ Total      Logics : 2188/11120 ( 19%)
+ Total        LUTs : 2058/11120 ( 18%)
+ Total   Registers :  446/11120 (  4%)
+ Total  Block Rams :   52/   56 ( 92%)
+ Total Multipliers :    0/   56 (  0%)
+ Total        PLLs :    0/    4 (  0%)
+ Total        Pins :    7/  251 (  2%)
+ Global    Signals :    1/   20 (  5%)
+    clk_i_o (from: clk_i_o_int)
+ Total Lonely   Datain   : 128
+ Total Lonely   Register : 2
+ Total LUT-FF   Pairs    : 296
+ Total Register Packings : 20
+ Registers with synchronous    reset : 350
+ Registers with asynchronous   reset : 0
+ Registers with sync and async reset : 0
+## CPU time: 0:0:50, REAL time: 0:0:50
+## Memory Usage: 923MB (923MB)
+Filter verilog...
+## CPU time: 0:0:0, REAL time: 0:0:0
+## Memory Usage: 923MB (923MB)
+Reading DB design...
+## CPU time: 0:0:0, REAL time: 0:0:1
+## Memory Usage: 924MB (924MB)
+Processing design...
+> set_instance_assignment -name VIRTUAL_PIN -to clk ON
+> set_instance_assignment -name VIRTUAL_PIN -to cs_n ON
+> set_instance_assignment -name VIRTUAL_PIN -to irq ON
+> set_instance_assignment -name VIRTUAL_PIN -to led_n ON
+> set_instance_assignment -name VIRTUAL_PIN -to miso ON
+> set_instance_assignment -name VIRTUAL_PIN -to mosi ON
+> set_instance_assignment -name VIRTUAL_PIN -to sck ON
+> set_instance_assignment -name ENABLE_OPEN_DRAIN -to led_n_o false
+> set_instance_assignment -name ENABLE_OPEN_DRAIN -to miso_o false
+> set_instance_assignment -name ENABLE_OPEN_DRAIN -to irq_o false
+> set_location_assignment -to clk PIN_23
+> set_location_assignment -to cs_n PIN_44
+> set_location_assignment -to irq PIN_43
+> set_location_assignment -to led_n PIN_141
+> set_location_assignment -to miso PIN_39
+> set_location_assignment -to mosi PIN_42
+> set_location_assignment -to sck PIN_38
+Info: Found GCLK net clk_i_o (200).
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.0|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.10|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.11|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.12|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.13|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.14|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.15|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.16|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.17|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.18|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.19|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.1|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.20|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.21|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.22|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.16|inst.ByteEnA to write enable for ram machine.ram.0.23|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.24|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.25|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.26|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.27|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.28|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.29|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.2|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.30|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.24|inst.ByteEnA to write enable for ram machine.ram.0.31|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.32|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.33|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.34|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.35|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.36|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.37|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.38|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.32|inst.ByteEnA to write enable for ram machine.ram.0.39|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.3|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.40|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.41|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.42|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.43|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.44|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.45|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.46|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.40|inst.ByteEnA to write enable for ram machine.ram.0.47|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.4|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.5|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.6|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.0|inst.ByteEnA to write enable for ram machine.ram.0.7|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.8|inst.ram_inst.
+Info: Adding byte enable net machine.ram.0.10|inst.ByteEnA to write enable for ram machine.ram.0.9|inst.ram_inst.
+Info: Adding byte enable net machine.vectors.0.0|inst.ByteEnA to write enable for ram machine.vectors.0.0|inst.ram_inst.
+Info: Adding byte enable net machine.vectors.0.0|inst.ByteEnA to write enable for ram machine.vectors.0.1|inst.ram_inst.
+Info: Adding byte enable net machine.vectors.0.0|inst.ByteEnA to write enable for ram machine.vectors.0.2|inst.ram_inst.
+Info: Adding byte enable net machine.vectors.0.0|inst.ByteEnA to write enable for ram machine.vectors.0.3|inst.ram_inst.
+## CPU time: 0:0:0, REAL time: 0:0:0
+## Memory Usage: 924MB (924MB)
+Using design SDC file ./a2_link.sdc.
+create_clock -name system -period 20.000 [get_ports {clk}]
+# SPI is asynchronously sampled, not used as a fabric clock. Timing from
+# board inputs to the first synchronizer stages is excluded; the FPGA
+# clock-domain paths remain constrained. External SPI timing is tested on-board.
+set_false_path -from [get_ports {sck cs_n mosi}]
+set_false_path -to [get_ports {miso irq led_n}]
+# cpu_input captures at divider 46; CPU CE is divider 49, three clocks later.
+# Only this internal data path receives the exception, not SPI/control logic.
+set_multicycle_path 3 -setup -from [get_cells {machine.cpu_input*}] -to [get_cells {machine.cpu.*}]
+set_multicycle_path 2 -hold -from [get_cells {machine.cpu_input*}] -to [get_cells {machine.cpu.*}]
+>  set pl_reuse_existing_placement false
+>  set pl_fix_bram_cells 0
+>  set pl_fix_mult_cells 0
+Using AQF file ./alta_db/alta.aqf.
+> set_global_assignment -name DEVICE_IO_STANDARD "3.3-V LVTTL"
+> set_global_assignment -name RESERVE_ALL_UNUSED_PINS "AS INPUT TRI-STATED"
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to clk
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to cs_n
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to irq
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to led_n
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to miso
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to mosi
+> set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to sck
+Using ASF file a2_link.asf.
+Placement Statistics
+ Total  Logic    Counts  : 2195/11120 (19.7%)
+ Total  Logic    Tiles   : 161
+ Total  Other    Tiles   : 52
+ Total  Valid    Nets    : 2686 (1330+1356)
+ Total  Valid    Fanouts : 14008 (9590+4418)
+ Total  Tile     Fanouts : 5056
+ Tile   Zip      Fanins  : 22 (0:29)
+ Tile   Zip      Fanouts : 35 (0:732)
+ Total  Ignored  Nets    : 2152
+ Total  Valid    Blocks  : 218 (213/5)
+ Total  Ignored  Blocks  : 0
+ Total  Zip Complexities : 2040/7462 1.80/3665.83
+ Avg    Zip   Bottleneck : 6.78 77.40
+ Avg    Net   Bottleneck : 14.82 413.93
+Iter #1/1 ...
+Pass 1 #1/1 ...
+Partitioning...
+ step = 0, partition : 47,28
+
+ step = 1, partition : 23,18
+..........
+ step = 2, partition : 11,10
+..........
+ step = 3, partition : 5,5
+..........
+ step = 4, partition : 2,2
+..........
+ step = 5, partition : 2,2
+..........
+
+## CPU time: 0:0:5, REAL time: 0:0:6
+Pass 2 #1/1 ...
+Legalization and Swapping...
+..........
+
+## CPU time: 0:0:8, REAL time: 0:0:9
+Pass 3 #1/1 ...
+Touchup...
+
+
+## CPU time: 0:0:0, REAL time: 0:0:0
+Pass 4 #1/1 ...
+Optimization...
+............................................................
+Finishing...
+
+## CPU time: 0:0:7, REAL time: 0:0:8
+Total wire cost after placement: 4.171:0.20855:0.292(4.171:0.20855) 12301.5(979.712)+56870(0)+35732 10585.1(3019.93)+5038.5
+
+*** Post Placement Timing Report ***
+=== User constraints ===
+Fmax report
+  User constraint:  50.000MHz, Fmax:  63.424MHz, Clock: system
+
+Clock transfer report:
+  Worst setup:   4.233, with clock system
+
+  Worst  hold:   0.292, with clock system
+
+=== Auto constraints ===
+
+
+Coverage report
+  User constraints covered 10710 connections out of 10710 total, coverage: 100.0%
+  Auto constraints covered 10710 connections out of 10710 total, coverage: 100.0%
+
+
+Setup from machine.cpu.state[2]_reg to machine.ram.0.8|inst.ram_inst, clock system, constraint 20.000, skew -0.383, data 15.582
+  Slack:   4.233
+    Arrival Time:   19.345
+    Required Time:  23.578
+
+*** End Timing Report ***
+
+route_design -dump ./alta_db/route.tx -replace ./alta_db/replace.tx 
+Route Design Statistics
+ Total Routing Nets : 2687
+ Fanout     Average : 4.52 (1..832)
+ Max   Fanout  Net  : gnd~I_int
+ Logic       Slices : 2195/16624 (13.2%)
+
+Routing...
+## CPU time: 0:0:1, REAL time: 0:0:1
+ iter = 1/1, route#: 2687, violation# : 2187, overflow# : 2010, conflict# : 1413, node#: 22939
+## CPU time: 0:0:2, REAL time: 0:0:2
+ iter = 2/2, route#: 2687, violation# : 1371, overflow# : 1351, conflict# : 1038, node#: 24235
+## CPU time: 0:0:3, REAL time: 0:0:3
+ iter = 3/3, route#: 2687, violation# : 791, overflow# : 788, conflict# : 681, node#: 25226
+## CPU time: 0:0:4, REAL time: 0:0:5
+ iter = 4/4, route#: 2687, violation# : 111, overflow# : 111, conflict# : 164, node#: 26307
+## CPU time: 0:0:5, REAL time: 0:0:6
+ iter = 5/5, route#: 2687, violation# : 14, overflow# : 14, conflict# : 27, node#: 26590
+## CPU time: 0:0:7, REAL time: 0:0:7
+ iter = 6/6, route#: 2687, violation# : 0, overflow# : 0, conflict# : 0, node#: 26640
+## CPU time: 0:0:8, REAL time: 0:0:8
+ iter = 7/3, route#: 73, violation# : 14, overflow# : 14, conflict# : 24, node#: 26489
+## CPU time: 0:0:8, REAL time: 0:0:8
+ iter = 8/4, route#: 22, violation# : 0, overflow# : 0, conflict# : 0, node#: 26496
+## CPU time: 0:0:9, REAL time: 0:0:9
+ iter = 9/3, route#: 143, violation# : 44, overflow# : 44, conflict# : 58, node#: 26342
+## CPU time: 0:0:9, REAL time: 0:0:10
+ iter = 10/4, route#: 24, violation# : 0, overflow# : 0, conflict# : 0, node#: 26444
+Optimizing...
+..
+
+Done
+
+*** Post Routing Timing Report ***
+=== User constraints ===
+Fmax report
+  User constraint:  50.000MHz, Fmax:  69.478MHz, Clock: system
+
+Clock transfer report:
+  Worst setup:   5.607, with clock system
+
+  Worst  hold:   0.292, with clock system
+
+=== Auto constraints ===
+
+
+Coverage report
+  User constraints covered 10710 connections out of 10710 total, coverage: 100.0%
+  Auto constraints covered 10710 connections out of 10710 total, coverage: 100.0%
+
+
+Setup from machine.cpu.state[3]_reg to machine.ram.0.24|inst.ram_inst, clock system, constraint 20.000, skew -0.383, data 14.208
+  Slack:   5.607
+    Arrival Time:   17.971
+    Required Time:  23.578
+
+*** End Timing Report ***
+
+Sat Sep 26 23:27:15 2026
+> 
+> if { [file exists "./${DESIGN}.post.asf"] } {
+  alta::tcl_highlight "Using post-ASF file ${DESIGN}.post.asf.\n"
+  source "./${DESIGN}.post.asf"
+}
+Using post-ASF file a2_link.post.asf.
+> date_time
+Sat Sep 26 23:27:18 2026
+> exit
+
+Total 0 fatals, 0 errors, 0 warnings, 62 infos.

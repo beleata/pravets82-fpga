@@ -1,0 +1,20 @@
+set_global_assignment -name FAMILY "Cyclone IV E"
+set_global_assignment -name DEVICE EP4CE10E22C8
+set_global_assignment -name TOP_LEVEL_ENTITY a2_link_top
+set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS "AS INPUT TRI-STATED"
+set_global_assignment -name SDC_FILE a2_link.sdc
+set_location_assignment PIN_23 -to clk
+set_location_assignment PIN_38 -to sck
+set_location_assignment PIN_42 -to mosi
+set_location_assignment PIN_39 -to miso
+set_location_assignment PIN_44 -to cs_n
+set_location_assignment PIN_43 -to irq
+set_location_assignment PIN_141 -to led_n
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to clk
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to sck
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to mosi
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to miso
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to cs_n
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to irq
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to led_n

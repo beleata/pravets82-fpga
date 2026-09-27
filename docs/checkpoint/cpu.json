@@ -1,0 +1,40 @@
+{
+  "memory_bytes_tested": 53248,
+  "smoke": {
+    "version": 1,
+    "running": false,
+    "halted": false,
+    "pc": 1570,
+    "a": 165,
+    "x": 0,
+    "y": 0,
+    "sp": 253,
+    "p": 229
+  },
+  "klaus": {
+    "seconds": 96.42069529999571,
+    "status": {
+      "version": 1,
+      "running": false,
+      "halted": false,
+      "pc": 13418,
+      "a": 240,
+      "x": 14,
+      "y": 255,
+      "sp": 255,
+      "p": 225
+    },
+    "marker": 240
+  },
+  "status": {
+    "version": 1,
+    "running": false,
+    "halted": false,
+    "pc": 13418,
+    "a": 240,
+    "x": 14,
+    "y": 255,
+    "sp": 255,
+    "p": 225
+  }
+}
